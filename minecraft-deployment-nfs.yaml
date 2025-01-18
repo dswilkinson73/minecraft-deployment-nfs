@@ -1,0 +1,113 @@
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: minecraft-nfs-pv
+  namespace: minecraft
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  mountOptions:
+    - hard
+    - nolock
+    - nfsvers=4.1
+  nfs:
+    path: /mnt/nfsshare/minecraft
+    server: 192.168.0.200
+
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minecraft-nfs-pvc
+  namespace: minecraft
+spec:
+  storageClassName: manual
+  accessModes:
+  - ReadWriteMany
+  resources:
+     requests:
+       storage: 5Gi
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minecraft-server
+  namespace: minecraft
+  labels:
+    app: minecraft-server
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 19132
+      protocol: UDP
+#    externalIPs:
+#    - 192.168.0.245
+  selector:
+    app: minecraft-server
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minecraft-server
+  namespace: minecraft
+  labels:
+    app: minecraft-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minecraft-server
+  template:
+    metadata:
+      labels:
+        app: minecraft-server
+    spec:
+      volumes:
+      - name: minecraft-data
+        persistentVolumeClaim:
+          claimName: minecraft-nfs-pvc
+      containers:
+      - name: minecraft-server
+        image: itzg/minecraft-bedrock-server:latest
+          #        image: itzg/minecraft-bedrock-server:latest
+        resources:
+          limits:
+            memory: 2Gi
+          requests:
+            memory: 1.5Gi
+        env:
+          - name:  EULA
+            value: 'TRUE'
+          - name: MODE
+            value: 'survival'
+          - name: MOTD
+            value: 'Papa minecraft server'
+          - name: LEVEL_NAME
+            value: 'Bedrock level'
+          - name: SERVER_NAME
+            value: 'my_minecraft_server'
+          - name: ALLOW_FLIGHT
+            value: 'TRUE'
+        volumeMounts:
+          - name: minecraft-data
+            mountPath:  /data
+#        readinessProbe: &probe
+#          exec:
+#            command:
+#              - mc-monitor 
+#              - status-bedrock
+#              - --host 
+#              - 127.0.0.1 
+#          initialDelaySeconds: 90
+#          periodSeconds: 30
+#        livenessProbe: *probe
